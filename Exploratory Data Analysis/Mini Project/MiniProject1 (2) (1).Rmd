@@ -1,0 +1,346 @@
+---
+title: "Mini project 1"
+author: "Aakash Ahuja"
+date: "11/02/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+always_allow_html: yes
+---
+**Loading Libraries and Data**
+```{r}
+#Loading Libraries
+library(tidycensus)
+census_api_key("38db8e5473d1110e8747ea3c3607201b634f3538", install = T, overwrite = T)
+library(readxl)
+library(plotly)
+library(lubridate)
+library(tidyr)
+library(dplyr)
+library(forecast)
+library(scales)
+#Loading the State abbreviations Data
+state_abbreviations<-read.table('state_abbrevs.txt', header = T)
+
+#Loading the US State Data
+state_and_us_data<-read_xls('State_and_US_SA.xls')
+
+#Slicing the extra rows and columns from the data
+t1<-state_and_us_data %>% slice(5)
+state_and_us_data<-state_and_us_data %>% slice(6:545)
+colnames(state_and_us_data)<-t1
+rm(t1)
+
+#Loading the CPI Data
+cpi<-read.csv('cpi.csv')
+cpi<-subset(cpi,Year>=1975 & Year<=2019)
+```
+
+**Adjusting the Month Variable**
+```{r}
+str(state_and_us_data$Month)
+#Converting Date Variable
+temporary_date<-strsplit(as.character(state_and_us_data$Month), "M")
+temporary_date<- as.data.frame(matrix(unlist(temporary_date), byrow = T, ncol = 2))
+
+temporary_date$V1<- as.numeric(as.character(temporary_date$V1))
+temporary_date$V2<- as.numeric(as.character(temporary_date$V2))
+
+temporary_date$Date <- with(temporary_date, sprintf("%d-%02d", V1, V2))
+
+temporary_date$Date<-parse_date_time(temporary_date$Date,"ym")
+
+#Putting this transformed date variable into main date variable
+state_and_us_data$Month<-temporary_date$Date
+str(state_and_us_data$Month)
+rm(temporary_date)
+```
+
+
+```{r}
+#Adjusting House Price Index for inflation after using the CPI values
+state_and_us_data$cpi<-cpi$Value
+
+state_and_us_data$inflation_adjusted_us_data<-(as.numeric(state_and_us_data$`United States seasonally adjusted`) * 174.600)/state_and_us_data$cpi
+```
+
+
+```{r}
+#Converting to time series data
+myts<-ts(state_and_us_data$`United States seasonally adjusted`,start = c(1975,1), end = c(2019,12), frequency = 12)
+
+#Converting to time series non seasonally adjusted data
+myts1<-ts(state_and_us_data$inflation_adjusted_us_data,start = c(1975,1), end = c(2019,12), frequency = 12)
+
+#Plotting my time series
+plot(myts, col='red', xlab="Year", ylab="House Price Index", main="House Price Index across years")
+lines(myts1, col='Blue')
+legend('topleft',legend = c("HPI", "HPI(Adjusted)"), col=c("red",'blue'), pch = c("*","+"))
+
+```
+We convert HPI data into time series data and fitted an additive model on it.
+After adjusting for inflation, it can be seen that the overall house prices increased over the span of 45 years(1975-2019). Although, there is a sudden drop in house prices observed during the time period 2008-2010(Due to the great recession). Then the house prices start increasing again after year 2012.
+The overall trend in house prices is increasing as expected.
+
+**Checking for variation within the states:** To observe the variations in house price index on the basis of the states, we create a new data frame by aggregating the longer version of us data and the mean of hpi values for every state and year.
+
+```{r}
+#Using Gather function to prepare longer version of us state data
+c1<-colnames(state_and_us_data)[2:52]
+temp2<-state_and_us_data[,-c(53,54)]
+state_and_us_data_long<-temp2 %>%
+  gather(key="Code",value = "hpi_value",c1 )
+
+state_and_us_data_long<-left_join(state_and_us_data_long,state_abbreviations,by='Code')
+state_and_us_data_long<-state_and_us_data_long[,-c(2)]
+rm(temp2)
+```
+
+
+```{r}
+#By state HPI
+str(state_and_us_data_long$hpi_value)
+Mean_House_Price_By_State<-aggregate(as.numeric(hpi_value)~year(Month)+State,FUN =mean, data = state_and_us_data_long)
+colnames(Mean_House_Price_By_State)<-c("Year","State","hpi_value")
+
+#Plotting HPI for each state
+temp1<-Mean_House_Price_By_State
+temp1$Year<-as.Date(as.character(Mean_House_Price_By_State$Year), format = "%Y")
+
+ggplot(data = temp1, aes(x=Year,y=hpi_value))+
+  geom_point(alpha=0.5, size=0.8 )+
+  geom_smooth(method = 'loess')+labs(title="House Prices Across US States",
+              subtitle="Dots represent actual data and line represents trend")+
+  facet_wrap(~State,ncol=13)+ scale_x_date(labels = date_format("%y"))
+```
+
+**Now we'll calculate the percentage change in house price index by state and year to see which state has seen the biggest increase or decrease in house prices in a single year.**
+```{r}
+#Calculating  Percentage change in House Price Index for each state by year
+Mean_House_Price_By_State$percentage_change<-0
+
+for (i in 1:nrow(Mean_House_Price_By_State)) {
+  if (Mean_House_Price_By_State$Year[i]!=1975){
+  Mean_House_Price_By_State$percentage_change[i]<-((Mean_House_Price_By_State$hpi_value[i]-Mean_House_Price_By_State$hpi_value[i-1])/(Mean_House_Price_By_State$hpi_value[i]))*100
+  }
+  else{
+    Mean_House_Price_By_State$percentage_change[i]<-0
+  }
+}
+
+Mean_House_Price_By_State[which.max(Mean_House_Price_By_State$percentage_change),]
+#Rhode Island in year 1987
+
+Mean_House_Price_By_State[which.min(Mean_House_Price_By_State$percentage_change),]
+#Nevada in the year 2009
+
+Mean_price<-aggregate(as.numeric(percentage_change)~State,FUN =mean, data = Mean_House_Price_By_State)
+
+Mean_price[which.max(Mean_price$`as.numeric(percentage_change)`),]
+#District of Columbia
+
+Mean_price[which.min(Mean_price$`as.numeric(percentage_change)`),]
+#West Virginia
+
+```
+
+To observe the pattern between states we plot the data and fit a loess model on it to see the trend. It can be seen that almost all states follow the same basic pattern which is increasing HPI w.r.t year. The dots represent the actual data and the line shows the underlying trend.There are a few states which do not follow a similar pattern as others and can be considered as outliers.
+
+The biggest change of 24.65% in house prices was observed for Rhode Island for the year 1987 and the smallest change of -38% was observed for Nevada for the year 2009. Although there are states like Nevada and District of Columbia, which deviates from the similar pattern as the house prices keeps on increasing even after the recession period of 2008-2010. These two states can be considered as outliers.
+
+
+**Checking for variation within Regions:** To observe the variations in house price index on the basis of the 4 regions, we create a new data frame by aggregating the longer version of us data and the mean of hpi values for every region and year.
+```{r}
+#By Region HPI
+Mean_House_Price_By_Region<-aggregate(as.numeric(hpi_value)~year(Month)+Region,FUN = mean, data = state_and_us_data_long)
+colnames(Mean_House_Price_By_Region)<-c("Year","Region","House_Price_Index")
+
+#Plotting HPI for each region
+temp2<-Mean_House_Price_By_Region
+temp2$Year<-as.Date(as.character(Mean_House_Price_By_Region$Year), format = "%Y")
+
+ggplot(data = temp2, aes(x=Year,y=House_Price_Index))+
+  geom_point(alpha=0.5, size=1.2 )+
+  geom_smooth(method = 'loess')+labs(title="House Prices Across 4 Regions",
+              subtitle="Dots represent actual data and line represents trend")+
+  facet_wrap(~Region,ncol=2)+ scale_x_date(labels = date_format("%y"))
+
+str(temp2)
+
+```
+The overall trend of house prices of different regions over the years is increasing. 
+The West region has the highest increase in house prices from 1975 to 2019 whereas the Midwest has the least. Northeast and West follow a similar trend while the Midwest and South follow a similar trend to each other in terms of changes in house price index across the years. 
+The general trend is that house prices increase over the period, with a sudden drop in house prices during the period 2008-2010. (Figure 3)
+
+**Question 1 ends**
+
+
+**Population Density and changes in house prices**
+
+**By State**
+```{r}
+present_density <- get_estimates(geography = "state", product = "population")
+present_density <- present_density[53:103,]
+names(present_density)[1] <-"State"
+temp3<-left_join(Mean_House_Price_By_State,present_density,by = "State")
+temp3<-temp3[,-c(5,6)]
+temp3$value<-round(temp3$value,2)
+
+temp3$Year<-as.Date(as.character(temp3$Year), format = "%Y")
+
+ggplot(temp3, aes(x = Year, y = hpi_value)) + geom_line() + facet_wrap(~value+State, ncol = 13)+ scale_x_date(labels = date_format("%y"))+labs(title="Changes in House Price with time against current Population Density ")
+```
+Here, we plot the House price index for all years against Present day Population Density. We put the states in increasing order of their present day population density. One starkling insight is that the states with low population density recovered pretty well from Great Depression. While the states with high population density never really recovered from the depression with their HPI values loitering around the same values as the pre-depression era even today with the exception of District of Columbia. Apart from that there is no clear & obvious trend in the changes of house price index with respect to present day population density. We see that with increasing present day population density, there is a similar trend for all states of the change in house price index across years.
+
+
+```{r}
+temp1<-aggregate(as.numeric(hpi_value)~State,FUN =mean, data = state_and_us_data_long)
+colnames(temp1)<-c("State","House_Price_Index")
+
+#Plotting HPI for each state
+names(present_density)[1] <-"State"
+temp3<-left_join(Mean_House_Price_By_State,present_density,by = "State")
+
+temp4 <-aggregate(as.numeric(hpi_value)~State,FUN =mean, data = temp3)
+
+temp4 <- cbind(temp4,present_density$value)
+
+colnames(temp4)<-c("State","House_Price_Index", "Density")
+fit1 <- lm(House_Price_Index~Density, data = temp4)
+cor1<-cor(temp4$House_Price_Index,temp4$Density) 
+ggplot(data = temp4, aes(x=Density, y = House_Price_Index),label = State)+geom_point() +labs(y ="Mean HPI", title="Density vs Mean HPI")+ geom_smooth(method='lm',se=F) 
+```
+
+**It looks like there is a trend in the sense that the HPI increases with density but it may be due to the presence of outliers. We remove the outliers using the Interquartile range. Outliers here are in the term of density values. We drop values that are greater than 1.5*IQR and below 1.5*IQR from the mean density.**
+
+```{r}
+q1 = quantile(temp4$Density,0.25)
+q3 = quantile(temp4$Density,0.75)
+iqr = IQR(temp4$Density)
+upper = q1 + 1.5*iqr
+lower = q3- 1.5*iqr
+
+temp4 = subset(temp4, Density > lower & Density < upper)
+ggplot(data = temp4, aes(x=Density, y = House_Price_Index))+geom_point()  +labs(y ="Mean HPI", title="Density vs Mean HPI")+geom_smooth(method='loess',se=F) 
+cor2<-cor(temp4$House_Price_Index,temp4$Density)
+```
+**We see the relationship between density and Mean HPI over the years after removing the outliers. Overall there seems to be no trend. The above plot captures the relationship across the US and maybe that could be the reason that a defined trend cannot be seen.**
+
+**Comparing HPI with density by region**
+```{r}
+t5 <- state_abbreviations
+temp7<-left_join(temp4,t5,by = "State")
+
+ggplot(data = temp7, aes(x=Density,y=House_Price_Index),label=Code)+
+  geom_point(alpha=0.5, size=0.8 )+labs(title=)+
+  geom_smooth(method = 'lm')+geom_text(aes(label=Code),hjust=0, vjust=0)+labs(title="Region Wise relation between HPI and density")+
+  facet_wrap(~Region,ncol=2)
+```
+
+In the above graph we plot a linear model to observe the trend between density and house prices across regions: 
+1. Midwest region states:The fitted line suggests there is a negative correlation between house prices and density. The house prices decrease with the increase in density.
+2. Northeast region states: There seems to be no clear trend between density and house prices.
+3. South region states:There seems to be no clear trend between density and house prices.
+4. West region states: The fitted line suggests there is a positive correlation between house prices and density. The house prices increase with the increase in density.
+
+```{r}
+#Getting Data 
+pop_1990 <- get_decennial(geography = "state", variables = "P0010001", year = 1990)
+pop_2000 <- get_decennial(geography = "state", variables = "P001001", year = 2000)
+pop_2010 <- get_decennial(geography = "state", variables = "P001001", year = 2010)
+pop_2010 <- pop_2010[-c(52),]
+
+mean_hpi_1990 <- subset(Mean_House_Price_By_State,Year >=1990 & Year<=2000)
+mean_hpi_1990<-aggregate(hpi_value~State,FUN =mean, data = mean_hpi_1990)
+
+mean_hpi_2000 <- subset(Mean_House_Price_By_State,Year >=2000 & Year<=2010)
+mean_hpi_2000<-aggregate(hpi_value~State,FUN =mean, data = mean_hpi_2000)
+
+mean_hpi_2010 <- subset(Mean_House_Price_By_State,Year >=2000 & Year<=2019)
+mean_hpi_2010<-aggregate(hpi_value~State,FUN =mean, data = mean_hpi_2010)
+
+hpi_pop_1990 <- cbind(pop_1990,hpi_mean = mean_hpi_1990$hpi_value)
+hpi_pop_2000 <- cbind(pop_2000,hpi_mean = mean_hpi_2000$hpi_value)
+hpi_pop_2010 <- cbind(pop_2010,hpi_mean = mean_hpi_2010$hpi_value)
+hpi_pop_1990$year_range <- "1990-2000"
+hpi_pop_2000$year_range <- "2000-2010"
+hpi_pop_2010$year_range <- "2010-Present"
+
+mean(hpi_pop_1990$value)
+#Average population for the decade 1990-2000: 4876664
+
+mean(hpi_pop_2000$value)
+#Average population for the decade 2000-2010: 5518077
+
+mean(hpi_pop_2010$value)
+#Average population for the decade 2010-2020: 6053834
+
+mean(hpi_pop_1990$hpi_mean)
+#Average HPI for the decade 1990-2000: 80.4703
+mean(hpi_pop_2000$hpi_mean)
+#Average HPI for the decade 2000-2010: 129.7515
+mean(hpi_pop_2010$hpi_mean)
+#Average HPI for the decade 2010-2020: 140.49
+
+hpi_pop_all_years <- rbind(hpi_pop_1990,hpi_pop_2000,hpi_pop_2010)
+#Function for outlier treatment
+outlier_treatment<-function(data){
+q1 = quantile(data,0.25)
+q3 = quantile(data,0.75)
+iqr = IQR(data)
+upper = q1 + 1.5*iqr
+lower = q3- 1.5*iqr
+
+temp5 <- subset(data, data > lower & data < upper)
+return(temp5) 
+}
+#---
+q1 = quantile(hpi_pop_all_years$value,0.25)
+q3 = quantile(hpi_pop_all_years$value,0.75)
+iqr = IQR(hpi_pop_all_years$value)
+upper = q1 + 1.5*iqr
+lower = q3- 1.5*iqr
+
+temp5 = subset(hpi_pop_all_years, value > lower & value < upper)
+#---
+
+ggplot(data = temp5, aes(x=value,y=hpi_mean))+
+  geom_point(alpha=0.5, size=0.2)+
+  geom_smooth(method = 'loess',se=F)+
+  facet_wrap(~year_range,ncol=3)+scale_x_continuous(labels=function(n){format(n, scientific = FALSE)})+labs(title="Changes in House prices with Population for all states across the 3 decades")
+
+colnames(hpi_pop_all_years)[2] <- c("State")
+hpi_pop_all_years_region<-left_join(hpi_pop_all_years,t5,by='State')
+hpi_pop_all_years_region<-na.omit(hpi_pop_all_years_region)
+
+
+hpi_pop_1990_region <- subset(hpi_pop_all_years_region,year_range=="1990-2000")
+t12<-data.frame(value=outlier_treatment(hpi_pop_1990_region$value))
+hpi_pop_1990_region<-left_join(t12,hpi_pop_1990_region,by='value')
+
+hpi_pop_2000_region <- subset(hpi_pop_all_years_region,year_range=="2000-2010")
+t22<-data.frame(value=outlier_treatment(hpi_pop_2000_region$value))
+hpi_pop_2000_region<-left_join(t22,hpi_pop_2000_region,by='value')
+
+hpi_pop_2010_region <- subset(hpi_pop_all_years_region,year_range=="2010-Present")
+t33<-data.frame(value=outlier_treatment(hpi_pop_2010_region$value))
+hpi_pop_2010_region<-left_join(t33,hpi_pop_2010_region,by='value')
+
+ggplot(data = hpi_pop_1990_region, aes(x=value,y=hpi_mean))+
+  geom_point(alpha=0.5, size=0.2 )+
+  geom_smooth(method = 'loess',se=F)+
+  facet_wrap(~Region,ncol=2)+scale_x_continuous(labels=function(n){format(n, scientific = FALSE)})+labs(title="Changes in House prices with Population for 1990-2000")
+ggplot(data = hpi_pop_2000_region, aes(x=value,y=hpi_mean))+
+  geom_point(alpha=0.5, size=0.2 )+
+  geom_smooth(method = 'loess',se=F)+
+  facet_wrap(~Region,ncol=2)+scale_x_continuous(labels=function(n){format(n, scientific = FALSE)})+labs(title="Changes in House prices with Population for 2000-2010")
+ggplot(data = hpi_pop_2010_region, aes(x=value,y=hpi_mean))+
+  geom_point(alpha=0.5, size=0.2 )+
+  geom_smooth(method = 'loess',se=F)+
+  facet_wrap(~Region,ncol=2)+scale_x_continuous(labels=function(n){format(n, scientific = FALSE)})+labs(title="Changes in House prices with Population for 2010-2020")
+```
+
+
+```

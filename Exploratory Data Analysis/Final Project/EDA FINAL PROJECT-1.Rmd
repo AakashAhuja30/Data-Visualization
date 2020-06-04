@@ -1,0 +1,242 @@
+---
+title: "Final Project EDA"
+author: "Aakash Ahuja & Ayush Bhatia"
+date: "18/04/2020"
+output: html_document
+---
+
+#Getting the Data
+```{r,message=F, warning=F}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+#install.packages('imputeTS')
+#install.packages('ggpmisc')
+#install.packages('rlang')
+library(imputeTS)
+full_data<-readxl::read_xlsx('EDA Final Project Data.xlsx', sheet = 2)
+Productivity<-readxl::read_xlsx('EDA Final Project Data.xlsx', sheet = 4)
+colnames(Productivity)[1]<-"State Name"
+colnames(full_data)[1]<-"Year"
+colnames(Productivity)[7]<-"Productivity_Value"
+full_data$`Measure Name`<-factor(full_data$`Measure Name`)
+
+Productivity<-filter(Productivity,`State Name`!='District of Columbia' &  `Units`=='2012=100')
+
+full_data<-full_data[,c(1,3,4,5,6,7)]
+
+Combined_Productivity<-left_join(Productivity,full_data, by= c("State Name","Year"))
+```
+
+**Definition of Air Pollution Value:** Average exposure of the general public to particulate matter of 2.5 microns or less (PM2.5) measured in micrograms per cubic meter (3-year estimate)
+
+**Definition of Binge Drinking Value:** Percentage of adults who reported either binge drinking (having four or more [women] or five or more [men] drinks on one occasion in the past 30 days)
+
+**Definition of Diabetes Value:** Percentage of adults who reported being told by a health professional that they have diabetes (excluding prediabetes and gestational diabetes)
+
+**Definition of High Blood Pressure Value:** Percentage of adults who reported being told by a health professional that they have High Blood Pressure
+
+**Definition of High Cholestrol Value:** Percentage of adults who reported being told by a health professional that they have High Cholestrol
+
+**Definition of Obesity Value:** Percentage of adults with a body mass index of 30.0 or higher based on reported height and weight
+
+**Definition of Physical Inactivity:** Percentage of adults who reported doing no physical activity or exercise other than their regular job in the past 30 days
+
+**Definition of Smoking Value:** Percentage of adults who are smokers (reported smoking at least 100 cigarettes in their lifetime and currently smoke daily or some days)
+
+**Definition of Smoking Value:** Percentage of adults who are smokers (reported smoking at least 100 cigarettes in their lifetime and currently smoke daily or some days)
+
+**Definition of Violent Crime value:** Number of murders, rapes, robberies and aggravated assaults per 100,000 population
+
+**Definition of Frequent Mental distress value:**Percentage of adults who reported their mental health was not good 14 or more days in the past 30 days
+
+**Definition of Insufficient Sleep value:**Percentage of adults who reported sleeping less than seven hours in a 24-hour period on average
+
+**Definition of Water Fluoridation value:**Percentage of population served by community water systems that receive fluoridated water
+
+
+```{r,message=F, warning=F}
+library(scales)
+US_Mean_Productivity<-aggregate(as.numeric(Productivity_Value)~Year,FUN = mean, data = Productivity)
+US_Mean_Productivity
+
+US_Mean_Productivity$Year<- as.Date(as.character(US_Mean_Productivity$Year), format = "%Y")
+
+ggplot(US_Mean_Productivity,aes(x = as.Date(Year), y =`as.numeric(Productivity_Value)`))+
+  geom_line(color='red')+
+  scale_x_date(labels = date_format("%y"))+
+  xlab('Year')+
+  ylab('Productivity')+
+  labs(title = "US Productivity across 2007-2017")
+
+```
+
+**The overall trend for US Productivity is that the productivity for the country is increasing across 10 years.**
+
+
+**Making a plotting function to check this trend for all factors in our dataset faceted by year**
+```{r,message=F, warning=F}
+library(plotly)
+
+#Making a plotting function for each of the measures like Air Pollution, Water Quality etc
+plottng_function<-function(Name){
+  
+Measure_df<-Combined_Productivity[Combined_Productivity$`Measure Name`==as.character(Name) & Combined_Productivity$Year!=2012,]
+
+p<-ggplot(Measure_df, aes(x = as.numeric(Value), y = as.numeric(Productivity_Value)))+
+  geom_point(size=0.5, aes(color=`State Name`, text=paste("Productivity:", round(as.numeric(Productivity_Value),1),"<br />", "Value",Value,"<br />")), show.legend = F)+
+  geom_smooth(method = "lm", se=F, linetype='solid')+
+  facet_wrap(~Year, ncol = 5)+
+  ylab('Productivity Value')+
+  xlab(paste(Name,"Value"))+
+  theme(legend.position = 'None')
+gp<-hide_legend(ggplotly(p,tooltip=c('text', 'State Name') ))
+#gppp<-style( gpp, text=mytext, hoverinfo = "text")
+print(gp)
+}
+
+```
+
+**Making a list of all the factors & plotting it against productivity value faceted by year**
+
+```{r,fig.width=15, fig.height=8, echo=FALSE,message=F, warning=F}
+my_list<-c("Air Pollution","Binge Drinking","Diabetes","High Blood Pressure","High Cholesterol","Obesity","Physical Inactivity","Smoking","Violent Crime","Frequent Mental Distress","Insufficient Sleep","Water Fluoridation")
+
+plotlist_1<-list()
+
+for (i in my_list) {
+  Measure_df<-Combined_Productivity[Combined_Productivity$`Measure Name`==as.character(i) & Combined_Productivity$Year!=2012,]
+  p<-ggplot(Measure_df, aes(x = as.numeric(Value), y = as.numeric(Productivity_Value)))+
+  geom_point(size=0.5, aes(color=`State Name`, text=paste("Productivity:", round(as.numeric(Productivity_Value),1),"<br />", "Value",Value,"<br />")), show.legend = F)+
+  geom_smooth(method = "lm", se=F, linetype='solid')+
+  facet_wrap(~Year, ncol = 5)+
+  ylab('Productivity Value')+
+  xlab(paste(i,"Value"))+
+  theme(legend.position = 'None')
+plotlist_1[[i]]<-hide_legend(ggplotly(p,tooltip=c('text', 'State Name') ))
+print(plotlist_1[[i]]) 
+}
+
+htmltools::tagList(setNames(plotlist_1, NULL))
+
+```
+
+**Based on these graphs, we see some clear & obvious trends & would like to remove certain variables from consideration based on lack of trend.**
+
+**The General trend of productivity across the last 3 years is that the mean productivity for all states is increasing with time as can be seen from the first plot. So if for a feature the productivity decreases, there could definitely be a relation.**
+
+**Features we would like to consider for further analysis**
+1. Air Pollution: Yes
+2. Binge Drinking: Yes
+3. Diabetes: No: No clear trend shown across the years
+4. High Blood Pressure: No clear trend shown across the years
+5. High Cholestrol Value: Yes but the trend seems to be mixed
+6. Obesity: Yes
+7. Physical Inactivity: Yes
+8. Smoking: Yes
+9. Violent Crime: Yes
+10. Frequent Mental Distress: Yes
+11. Insufficient Sleep: Yes
+12. Water Fluoridation: No. Lack of data even though the trend seems interesting
+
+
+**Percentage Change**
+```{r,message=F, warning=F}
+Combined_Productivity <- na.omit(Combined_Productivity)
+
+remove_measures <- c("Diabetes","High Blood Pressure","Excessive Drinking","Water Fluoridation","Poor Mental Health Days")
+
+`%notin%` <- Negate(`%in%`)
+
+prod_data_perc <- Combined_Productivity %>% filter(
+  `Measure Name` %notin% remove_measures
+  )
+
+Measure_names<-as.vector(unique(prod_data_perc$`Measure Name`))
+
+#measure_names <- measure_max$`Measure Name`
+#state_names <- measure_max$`State Name`
+#measure_change <- measure_max$Value - measure_min$Value
+#measure_perc_change <- (measure_change*100)/measure_min$Value
+
+#prod_change <- as.numeric(measure_max$Productivity_Value) - as.numeric(measure_min$Productivity_Value)
+
+#prod_perc_change <- (prod_change*100)/as.numeric(measure_min$Productivity_Value)
+
+#final_perc_data <- data.frame("Measure Name" = measure_names,"State Name" = state_names,"Productivity Change" = prod_perc_change, "Measure Change" = measure_perc_change )
+
+```
+
+**Plotting Percentage change in productivity and measure values**
+
+
+
+```{r,fig.width=15, fig.height=8,message=F, warning=F}
+library(ggpmisc)
+
+average_change_by_measure<-aggregate(cbind(as.numeric(Productivity_Value), as.numeric(Value) ) ~ `State Name`+`Measure Name` , data = prod_data_perc, FUN =  mean)
+colnames(average_change_by_measure)[3]<-"Mean_Productivity"
+colnames(average_change_by_measure)[4]<-"Mean_Values"
+
+
+plotlist_3 = list()
+for (i in Measure_names) {
+  
+  temp_df_mean<-average_change_by_measure[average_change_by_measure$`Measure Name`==i,]
+  p<-ggplot(temp_df_mean, aes(x=Mean_Values, y=Mean_Productivity)) +
+    stat_quadrant_counts(geom='text', colour = "blue", size=5, xintercept = mean(temp_df_mean$Mean_Values), yintercept = mean(temp_df_mean$Mean_Productivity)) +
+  geom_point(size=0.75, aes(color=`State Name`)) +
+  lims(x=c(min(temp_df_mean$Mean_Values)-0,max(temp_df_mean$Mean_Values)+0),y=c(min(temp_df_mean$Mean_Productivity)-0,max(temp_df_mean$Mean_Productivity)+0)) +
+  xlab(paste(i,"Mean"))+  
+  theme_minimal() +
+  #coord_fixed() +  
+  theme(legend.position = 'None')+
+  geom_vline(xintercept = mean(temp_df_mean$Mean_Values)) + geom_hline(yintercept = mean(temp_df_mean$Mean_Productivity) )
+ plotlist_3[[i]]<- hide_legend(ggplotly(p,tooltip=c('State Name') ))
+ print(plotlist_3[[i]]) 
+ #gp<-hide_legend(ggplotly(p,tooltip=c('State Name') ))
+  #print(gp)
+}
+htmltools::tagList(setNames(plotlist_3, NULL))
+
+```
+
+**Finally we come to building a final model for productivity values of different states of United States**
+```{r,message=F, warning=F}
+library(imputeTS)
+library(broom)
+library(MASS)
+library(tidyverse)
+library(GGally)
+model_data<-prod_data_perc[,c("State Name","Year","Measure Name","Productivity_Value","Value")]
+model_data$Productivity_Value<-as.numeric(model_data$Productivity_Value)
+
+selected_model_data <- model_data %>%
+  pivot_wider(names_from = `Measure Name`, values_from = Value)
+
+selected_model_data<-na_mean(selected_model_data)
+model_lm_data_1<-selected_model_data[,-c(1,2)]
+model_lm_data<-selected_model_data
+#Checking Correlation between variables
+ggpairs(model_lm_data_1)
+#Air Pollution Obesity, Smoking, Violent Crime, Insufficient Sleep
+
+#Fitting a model
+mod_fit<-lm(Productivity_Value~., data = model_lm_data)
+#summary(mod_fit)
+
+final_fit<-augment(mod_fit)
+```
+
+```{r,message=F, warning=F}
+
+ggplot(final_fit, aes(x = Air.Pollution, y = .resid)) + geom_point(size =1.5)  + geom_smooth(method ="rlm")+labs(title="Air Pollution Vs Residuals")
+
+ggplot(final_fit, aes(x = Obesity, y = .resid)) + geom_point(size =1.5)  + geom_smooth(method ="rlm")+labs(title="Obesity Vs Residuals")
+
+ggplot(final_fit, aes(x = Smoking, y = .resid)) + geom_point(size =1.5)  + geom_smooth(method ="rlm", se=F)+labs(title="Smoking Vs Residuals")
+
+ggplot(final_fit, aes(x = Violent.Crime, y = .resid)) + geom_point(size =1.5)  + geom_smooth(method ="rlm")+labs(title="Violent Crime Vs Residuals")
+
+ggplot(final_fit, aes(x = Insufficient.Sleep, y = .resid)) + geom_point(size =1.5)  + geom_smooth(method ="rlm", se=F)+labs(title="Insufficient Sleep Vs Residuals")
+```

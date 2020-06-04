@@ -1,0 +1,239 @@
+---
+title: "eda_MP2"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+Question 1: How do Switch to D and Switch to R voters differ on the issue variables?
+
+```{r }
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(tidyr)
+
+#Reading the survey data
+survey_data <- read.csv("DFP_WTHH_release.csv",header = TRUE)
+
+#Creating dataset for Loyal Democrats and Loyal Republicans by subsetting the survey data
+loyal_demo <- survey_data[which(survey_data$presvote16post == 1 & survey_data$house3 == 1),]
+loyal_rep <- survey_data[which(survey_data$presvote16post == 2 & survey_data$house3 == 2),]
+
+#Creating three subset data: switchD, switchR and swingers
+swing_voters <- setdiff(survey_data, rbind(loyal_demo,loyal_rep))
+switchD <- swing_voters[which(swing_voters$presvote16post !=1 & swing_voters$house3 == 1),]
+switchR <- swing_voters[which(swing_voters$presvote16post !=2 & swing_voters$house3 == 2),]
+
+#Defining a vector of issue variables
+issue_att <- c("M4A","GREENJOB","WEALTH","ICE","GUNS","MARLEG","weight_DFP")
+
+#Creating a subset data which includes just the issue variables
+switchD_issue <- switchD[issue_att]
+switchR_issue <- switchR[issue_att]
+
+#Adding a new column for the type of switch voters. This will be used for plotting facet plot
+switchD_issue$switch = "switchD"
+switchR_issue$switch = "switchR"
+
+#Combining both the data using rbind to perform plotting
+all_switch_voters <- rbind(switchD_issue,switchR_issue)
+
+
+#Plotting histograms for each issue variable and faceting with the type of swing voter
+#M4A
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$M4A<=5,]), aes(x = M4A, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count (Adjusted)')
+#They vastly differ on the issue for Medicare 4 all. Democrats mostly support it while republicans mostly oppose it.
+
+#Greenjob
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$GREENJOB<=5,]), aes(x = GREENJOB, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count(Adjusted)')
+#Democrats mostly support it. Republicans have mixed opinions about this issue
+
+#Wealth
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$WEALTH<=5,]), aes(x = WEALTH, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count (Adjusted)')
+#Democrats mostly support it. Republicans have mixed opinions about this issue
+
+#ICE
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$ICE<=5,]), aes(x = ICE, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count (Adjusted)')
+#Democrats have mixed opinion on this issue. While Republicans strongly oppose defunding immigration & custom enforcement.
+
+#GUNS
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$GUNS<=5,]), aes(x = GUNS, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count (Adjusted)')
+#Democrats mostly support gun control. While republicans do not have any strong opinion on this issue.
+
+#Marleg
+ggplot(data = na.omit(all_switch_voters[all_switch_voters$MARLEG<=5,]), aes(x = MARLEG, y=..density.., weight=weight_DFP, fill=switch)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~switch)+ylab('% Count (Adjusted)')
+#Both republicans and democrats mostly support the legalising of marijuana.
+
+#Question 1 Answer: M4A: Strongly Differ, Marleg: Closely similar opinions
+```
+
+Question 2: How do swing voters differ from loyal Democrats and loyal Republicans on the
+issue variables?
+
+```{r}
+#Creating a subset data for Loayal Democrats and Royal Republicans, which includes only the issue attributes
+#Adding a new column "voter_type" for facet plot
+loyalD_issue <- loyal_demo[issue_att]
+loyalD_issue$voter_type <- "Loyal Democrats"
+loyalR_issue <- loyal_rep[issue_att]
+loyalR_issue$voter_type <- "Loyal Republicans"
+swingers_issue <- swing_voters[issue_att]
+swingers_issue$voter_type <- "Swingers"
+
+#Binding the 3 subsets of data 
+combined_voters <- rbind(loyalD_issue,swingers_issue,loyalR_issue)
+
+#Plotting histograms of each issue variables and faceting with the voter_type
+#M4A
+ggplot(data = na.omit(combined_voters[combined_voters$M4A<=5,]), aes(x = M4A, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Split
+
+#Greenjob
+ggplot(data = na.omit(combined_voters[combined_voters$GREENJOB<=5,]), aes(x = GREENJOB, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Acting like democrats
+
+#Wealth
+ggplot(data = na.omit(combined_voters[combined_voters$WEALTH<=5,]), aes(x = WEALTH, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Acting like democrats
+
+#ICE
+ggplot(data = na.omit(combined_voters[combined_voters$ICE<=5,]), aes(x = ICE, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Acting like Republicans
+
+#Guns
+ggplot(data = na.omit(combined_voters[combined_voters$GUNS<=5,]), aes(x = GUNS, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Acting like democrats
+
+#Marleg
+ggplot(data = na.omit(combined_voters[combined_voters$MARLEG<=5,]), aes(x = MARLEG, y=..density.., weight=weight_DFP, fill=voter_type)) + geom_histogram(binwidth = 1, color='black') + facet_wrap(~voter_type)+ylab('% Count (Adjusted)')
+#Acting like democrats
+
+#Answer: Hypothesis 3 fits the data best.Swing voters think more like Democrats on some issues and more like Republicans on other issues. This hypothesis fits the data for all issue variables bar M4A
+```
+
+Question 3:
+
+a) Modeling using ONLY the issue variables as predictors:
+
+```{r}
+#We need to assign the swingers data with "1" and others with "0". For this, we create a new column named "swing_voter". This tells us whether the registered voter is a swing voter or not.
+swingers_issue$swing_voter <- 1
+loyalR_issue$swing_voter <- 0
+loyalD_issue$swing_voter <- 0
+
+#Combining the three data to form "all_voters" data
+all_voters <- rbind(loyalD_issue,swingers_issue,loyalR_issue)
+all_voters$voter_type <- NULL
+summary(all_voters)
+
+#Using the ggpair function to check the correlation between the features and swing_voter
+ggpairs(all_voters)
+#Looking at the correlation, we can see that the feature 'GREENJOB' has the maximum correlation of 0.086.
+
+#Transforming the data to wider version and storing it in a temporary variable, so that it can be used to plot as a facet
+temp_issue<-all_voters %>%
+  gather(key="Issue_variable", value = "Issue_Value", c("M4A","GREENJOB","WEALTH","ICE", "GUNS" ,"MARLEG" ))
+temp_issue<-na.omit(temp_issue)
+temp_issue <- temp_issue[which(temp_issue$Issue_Value!= 6),]
+
+#Plotting the predicted probabilities faceted by the issue variable
+gg = ggplot(temp_issue, aes(x = Issue_Value, y = swing_voter)) +
+geom_jitter(width = 0, height = 0.1,size=0.5) 
+
+#Smoothing the plot using 'glm' method
+gg + geom_smooth(method = "glm",
+method.args = list(family = "binomial"), color = "orange") +
+  facet_wrap(~Issue_variable)+
+xlab("Issue Variables") +
+ylab("Probability being a swing voter")
+
+#Creating a logistic regression model by combining all the issue variables
+logit_mod <- glm(swing_voter ~ GREENJOB + M4A + GUNS + MARLEG + WEALTH + ICE, data=all_voters, family=binomial(link="logit"))
+
+#Plotting the above model to find the probability of being a swing vector
+ggplot(data = logit_mod, aes(x=GREENJOB + M4A + GUNS + MARLEG + WEALTH + ICE,y=swing_voter))  + geom_jitter(height = 0.1,width = .25) + 
+geom_smooth(method = 'glm',method.args=list(family="binomial"),se=FALSE) +
+ylab("Probability being a swing voter")
+
+#Now, we can also determine the probability of predicting the swing voters by combining both the important features. Then, we can use the target variable 'swing_voter' as a factor for prediction. 
+ggplot(all_voters, aes(x = GREENJOB, y = GUNS, color = factor(swing_voter))) +
+geom_jitter(alpha = 0.4,size=1) +
+xlab("GREENJOB") +
+ylab("GUNS") +
+labs(color = "Swing Voter ?") +
+scale_color_manual(values = c("red", "green"), labels = c("No", "Yes"))
+
+```
+
+
+b) Modelling using ONLY the populism variables as predictors:
+
+```{r}
+#Creating a new vector for populism variables
+pop_att <- c("POP_1","POP_2","POP_3")
+
+#Creating 3 datasets with populism variables as the features
+loyalD_pop <- loyal_demo[pop_att]
+loyalR_pop <- loyal_rep[pop_att]
+swingers_pop <- swing_voters[pop_att]
+
+#Again, assigning the 'swing_voter' variable as '0' or '1'
+swingers_pop$swing_voter <- 1
+loyalR_pop$swing_voter <- 0
+loyalD_pop$swing_voter <- 0
+
+#Combining the 3 datasets
+all_voters_pop <- rbind(loyalD_pop,swingers_pop,loyalR_pop)
+summary(all_voters_pop)
+
+#Checking the correlation of the three populism variables with respect to the target variable
+ggpairs(all_voters_pop)
+
+#Looking at the correlation values, we select 'the POP_1' feature with the largest negative correlation of -0.13
+
+#Plotiing the 'POP_1' variable
+gg_pop1 = ggplot(all_voters_pop, aes(x = POP_1, y = swing_voter)) +
+geom_jitter(width = 0, height = 0.1) 
+
+#Smoothing the curve using the 'glm' method
+gg_pop1 + geom_smooth(method = "glm",
+method.args = list(family = "binomial"), color = "orange") +
+xlab("POP_1") +
+ylab("Probability being a swing voter")
+
+#Transforming the data to wider version and storing it in a temporary variable, so that it can be used to plot as a facet
+temp_pop<-all_voters_pop %>%
+  gather(key="Pop_variable", value = "Pop_Value", c("POP_1","POP_2","POP_3"))
+temp_pop<-na.omit(temp_pop)
+gg = ggplot(temp_pop, aes(x = Pop_Value, y = swing_voter)) +
+geom_jitter(width = 0, height = 0.1)
+
+#Smoothing the plot using 'glm' method
+gg + geom_smooth(method = "glm",
+method.args = list(family = "binomial"), color = "orange") +
+  facet_wrap(~Pop_variable)+
+xlab("Populism Variables") +
+ylab("Probability being a swing voter")
+
+#Creating a logistic regression model by combining all the populism variables
+logit_mod_pop <- glm(swing_voter ~ POP_1 + POP_2 + POP_3, data=all_voters_pop, family=binomial(link="logit"))
+
+#Plotting the above model to find the probability of being a swing vector
+ggplot(data = logit_mod_pop, aes(x=POP_1 + POP_2 + POP_3, y =swing_voter)) + 
+geom_jitter(height = 0.1,width = .25) + 
+geom_smooth(method = 'glm',method.args=list(family="binomial"),se=FALSE) 
+
+#Combining the two most correlated feature 'POP_1' and 'POP_2' for determining probability of being the swing voter and using the target variable 'swing_voter' as a colored factor for prediction.
+ggplot(all_voters_pop, aes(x = POP_1, y = POP_2, color = factor(swing_voter))) +
+geom_jitter(alpha = 0.4,size=1) +
+xlab("POP_1") +
+ylab("POP_2") +
+labs(color = "Swing Voter ?") +
+scale_color_manual(values = c("red", "green"), labels = c("No", "Yes"))
+
+
+
+
+```
